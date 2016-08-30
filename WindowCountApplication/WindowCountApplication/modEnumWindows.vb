@@ -36,10 +36,15 @@ Module modEnumWindows
     End Structure
 
     Private windowList As New ArrayList
+    Private ieTabList As New ArrayList
     Private errMessage As String
 
     Public Delegate Function MyDelegateCallBack(ByVal hwnd As Integer, ByVal lParam As Integer) As Boolean
     Declare Function EnumWindows Lib "user32" (ByVal x As MyDelegateCallBack, ByVal y As Integer) As Integer
+    Declare Function EnumChildWindows Lib "user32" _
+        (ByVal hWnd As IntPtr,
+        ByVal x As MyDelegateCallBack,
+        ByVal y As Integer) As Integer
 
     Declare Auto Function GetClassName Lib "user32" _
         (ByVal hWnd As IntPtr,
@@ -81,7 +86,13 @@ Module modEnumWindows
                 'If sTitle.Length() > 0 Then
                 If Not ((windowInfo.dwExStyle And &H80) = &H80) And Not ((windowInfo.dwExStyle And &H200000) = &H200000) Then
                     'windowList.Add(Hex(windowInfo.dwExStyle) & " | " & sClass.ToString & ", " & hwnd & ", " & sTitle.ToString & " - " & Process.GetProcessById(processId).ToString() & " - " & processId.ToString())
-                    windowList.Add(New WindowDetails With {.WindowClass = sClass, .WindowHandle = hwnd, .WindowTitle = sTitle, .ExtendedWindowStyle = windowInfo.dwExStyle, .ProcessId = processId})
+                    If Not sClass.ToString() = "IEFrame" Then
+                        windowList.Add(New WindowDetails With {.WindowClass = sClass, .WindowHandle = hwnd, .WindowTitle = sTitle, .ExtendedWindowStyle = windowInfo.dwExStyle, .ProcessId = processId})
+                    Else
+                        Dim del As MyDelegateCallBack
+                        del = New MyDelegateCallBack(AddressOf EnumChildWindowProc)
+                        EnumChildWindows(hwnd, del, 0)
+                    End If
                 End If
             End If
 
@@ -96,9 +107,48 @@ Module modEnumWindows
 
     End Function
 
-    Public Function getWindowList(ByRef wList As ArrayList, Optional errorMessage As String = "") As Boolean
+    Private Function EnumChildWindowProc(ByVal hwnd As Integer, ByVal lParam As Integer) As Boolean
+
+        'working vars
+        Dim sTitle As New StringBuilder(255)
+        Dim sClass As New StringBuilder(255)
+        Dim processId As Integer
+        Dim windowInfo As WINDOWINFO
+
+        Try
+            Call GetClassName(hwnd, sClass, 255)
+            Call GetWindowText(hwnd, sTitle, 255)
+            Call GetWindowThreadProcessId(hwnd, processId)
+            Call GetWindowInfo(hwnd, windowInfo)
+
+            'If IsWindowVisible(hwnd) Then
+            'If sClass.ToString() = "IEFrame" Or sClass.ToString() = "Internet Explorer_Hidden" Then
+            'If sTitle.Length() > 0 Then
+            'If Not ((windowInfo.dwExStyle And &H80) = &H80) And Not ((windowInfo.dwExStyle And &H200000) = &H200000) Then
+            'windowList.Add(Hex(windowInfo.dwExStyle) & " | " & sClass.ToString & ", " & hwnd & ", " & sTitle.ToString & " - " & Process.GetProcessById(processId).ToString() & " - " & processId.ToString())
+            If sClass.ToString() = "TabWindowClass" Then
+                ieTabList.Add(New WindowDetails With {.WindowClass = sClass, .WindowHandle = hwnd, .WindowTitle = sTitle, .ExtendedWindowStyle = windowInfo.dwExStyle, .ProcessId = processId})
+                'Console.WriteLine(String.Format("{0} - {1} - {2}", hwnd, sClass.ToString(), sTitle.ToString()))
+
+                '      End If
+                '   End If
+            End If
+
+
+        Catch ex As Exception
+            errMessage = ex.Message
+            EnumChildWindowProc = False
+            Exit Function
+        End Try
+
+        EnumChildWindowProc = True
+
+    End Function
+
+    Public Function getWindowList(ByRef wList As ArrayList, ByRef tList As ArrayList, Optional errorMessage As String = "") As Boolean
 
         windowList.Clear()
+        ieTabList.Clear()
 
         Try
             Dim del As MyDelegateCallBack
@@ -111,8 +161,10 @@ Module modEnumWindows
             Exit Function
         End Try
 
+        tList.Clear()
         wList.Clear()
         wList = windowList
+        tList = ieTabList
 
     End Function
 
